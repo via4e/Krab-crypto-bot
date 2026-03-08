@@ -7,6 +7,7 @@ jspm_packages/
 .env.*
 config.js
 !config.example.js
+architecture_prompt.md
 
 # Logs
 npm-debug.log*
