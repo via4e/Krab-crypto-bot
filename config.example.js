@@ -1,3 +1,5 @@
+// Rename to config.js, add chatId and botToken
+
 module.exports = {
   // Volume & ATR thresholds
   VOLUME_MULTIPLIER: 3,      // 3x volume spike
