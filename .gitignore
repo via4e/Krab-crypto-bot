@@ -18,3 +18,8 @@ yarn-error.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Database
+users.sqlite
+users.sqlite-journal
+users.sqlite-shm

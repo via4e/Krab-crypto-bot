@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-class BybitAPI {
+class BybitSpotAPI {
   constructor() {
     this.baseURL = 'https://api.bybit.com/v5';
   }
@@ -8,7 +8,7 @@ class BybitAPI {
   // Get all USDT perpetual (linear) symbols
   async getSymbols() {
     const res = await axios.get(`${this.baseURL}/market/instruments-info`, {
-      params: { category: 'linear', limit: 1000 }
+      params: { category: 'spot', limit: 1000 }
     });
     return res.data.result.list
       .filter(s => s.quoteCoin === 'USDT' && s.status === 'Trading')
@@ -25,7 +25,7 @@ class BybitAPI {
   async getKlines(symbol, interval, limit = 200) {
     const bybitInterval = BybitAPI.INTERVAL_MAP[interval] || interval;
     const res = await axios.get(`${this.baseURL}/market/kline`, {
-      params: { category: 'linear', symbol, interval: bybitInterval, limit }
+      params: { category: 'spot', symbol, interval: bybitInterval, limit }
     });
     return res.data.result.list.map(k => ({
       time: parseInt(k[0]),
@@ -37,37 +37,20 @@ class BybitAPI {
     })).reverse(); // Oldest first
   }
 
-  // Get 24h ticker for volume
   async getTickers() {
     const res = await axios.get(`${this.baseURL}/market/tickers`, {
-      params: { category: 'linear' }
+      params: { category: 'spot' }
     });
     return res.data.result.list.reduce((acc, t) => {
       if (t.symbol.endsWith('USDT')) {
         acc[t.symbol] = {
           volume24h: parseFloat(t.volume24h) * parseFloat(t.lastPrice),
-          lastPrice: parseFloat(t.lastPrice),
-          fundingRate: parseFloat(t.fundingRate) || 0
+          lastPrice: parseFloat(t.lastPrice)
         };
       }
       return acc;
     }, {});
   }
-
-  // Fetch funding rate for a specific symbol
-  async getTickerInfo(symbol) {
-    try {
-      const res = await axios.get(`${this.baseURL}/market/tickers`, {
-        params: { category: 'linear', symbol }
-      });
-      if (res.data && res.data.result && res.data.result.list && res.data.result.list.length > 0) {
-        return parseFloat(res.data.result.list[0].fundingRate) || 0;
-      }
-    } catch (err) {
-      // Return null if symbol doesn't exist or API fails
-    }
-    return null;
-  }
 }
 
-module.exports = BybitAPI;
+module.exports = BybitSpotAPI;
