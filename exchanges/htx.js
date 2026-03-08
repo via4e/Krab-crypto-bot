@@ -60,9 +60,14 @@ class HTXAPI {
       // HTX returns a single object or an array depending on the query, let's gracefully handle both
       let data = res.data.data;
       if (Array.isArray(data) && data.length > 0) {
-        return parseFloat(data[0].funding_rate) || 0;
-      } else if (data && data.funding_rate !== undefined) {
-        return parseFloat(data.funding_rate) || 0;
+        data = data[0];
+      }
+      if (data && data.funding_rate !== undefined) {
+        return {
+          rate: parseFloat(data.funding_rate) || 0,
+          nextFundingTime: parseInt(data.next_funding_time) || parseInt(data.funding_time) || null,
+          intervalHours: null
+        };
       }
     } catch (err) {
       // Return null if symbol doesn't exist or API fails

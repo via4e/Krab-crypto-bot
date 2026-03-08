@@ -57,7 +57,18 @@ class OKXAPI {
         params: { instId: symbol }
       });
       if (res.data && res.data.data && res.data.data.length > 0) {
-        return parseFloat(res.data.data[0].fundingRate) || 0;
+        const d = res.data.data[0];
+        const nextTime = parseInt(d.nextFundingTime) || null;
+        const currTime = parseInt(d.fundingTime) || null;
+        let intervalHours = null;
+        if (nextTime && currTime) {
+          intervalHours = Math.round((nextTime - currTime) / 3600000);
+        }
+        return {
+          rate: parseFloat(d.fundingRate) || 0,
+          nextFundingTime: nextTime || currTime,
+          intervalHours
+        };
       }
     } catch (err) {
       // Return null if symbol doesn't exist or API fails

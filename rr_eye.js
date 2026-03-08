@@ -15,6 +15,33 @@ const { Telegraf } = require('telegraf');
 // Escape helper for Telegram Markdown v1
 const escapeMd = (str) => typeof str === 'string' ? str.replace(/_/g, '\\_') : str;
 
+// Calculate nearest future 8h UTC boundary (00:00, 08:00, 16:00)
+const getDefaultFundingTime = (nowMs = Date.now()) => {
+  const intervalMs = 8 * 3600 * 1000;
+  return Math.ceil(nowMs / intervalMs) * intervalMs;
+};
+
+// Format funding rate with cycle and countdown
+const formatFundingObj = (rateObj) => {
+  const rateVal = typeof rateObj === 'number' ? rateObj : (rateObj && rateObj.rate !== undefined ? rateObj.rate : 0);
+  if (rateVal === null) return null;
+  const cycleHs = (rateObj && rateObj.intervalHours) ? rateObj.intervalHours : 8;
+  const nextTime = (rateObj && rateObj.nextFundingTime) ? rateObj.nextFundingTime : getDefaultFundingTime();
+
+  const diffMs = nextTime - Date.now();
+  if (diffMs < 0) return `${(rateVal * 100).toFixed(4)}% each ${cycleHs}h, next soon`;
+  
+  const diffHrs = Math.floor(diffMs / 3600000);
+  const diffMins = Math.floor((diffMs % 3600000) / 60000);
+  
+  let timeStr = '';
+  if (diffHrs > 0) timeStr += `${diffHrs}h `;
+  timeStr += `${diffMins}m`;
+  if (timeStr === '0m') timeStr = '<1m';
+  
+  return `${(rateVal * 100).toFixed(4)}% each ${cycleHs}h, next ${timeStr.trim()}`;
+};
+
 // Simple delay helper for rate limiting
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -389,20 +416,29 @@ class CryptoTracker {
           if (!ticker || ticker.volume24h < config.MIN_VOLUME_USDT) continue;
 
           try {
-            let fundingRate = ticker.fundingRate;
-            if (fundingRate === undefined) {
+            let fundingVal = ticker.fundingRate;
+            let fundingObj = { rate: ticker.fundingRate, nextFundingTime: ticker.nextFundingTime, intervalHours: ticker.intervalHours };
+            if (fundingVal === undefined) {
               if (typeof ex.api.getTickerInfo === 'function') {
-                fundingRate = await ex.api.getTickerInfo(symbol);
+                const info = await ex.api.getTickerInfo(symbol);
+                if (typeof info === 'object' && info !== null) {
+                  fundingObj = info;
+                  fundingVal = info.rate;
+                } else {
+                  fundingObj = { rate: info };
+                  fundingVal = info;
+                }
               } else {
                 continue;
               }
             }
             
-            if (fundingRate !== undefined && fundingRate !== null) {
+            if (fundingVal !== undefined && fundingVal !== null) {
                 results.push({
                     symbol,
                     exchange: ex.name,
-                    fundingRate,
+                    fundingRate: fundingVal,
+                    fundingObj: fundingObj,
                     price: ticker.lastPrice
                 });
             }
@@ -438,7 +474,7 @@ class CryptoTracker {
       }
 
       const lines = top.map((t, i) =>
-        `${i + 1}. *${escapeMd(t.symbol)}* (${escapeMd(t.exchange)})\n   Funding: ${(t.fundingRate * 100).toFixed(4)}% | Price: $${t.price}`
+        `${i + 1}. *${escapeMd(t.symbol)}* (${escapeMd(t.exchange)})\n   Funding: ${formatFundingObj(t.fundingObj)} | Price: $${t.price}`
       );
 
       const message = `🏦 *Top ${config.TOP_NUMBER} Funding Rates*\n\n` + lines.join('\n\n');
@@ -460,13 +496,13 @@ class CryptoTracker {
   }
 
   // Send Volume alert
-  async sendVolumeAlert(chatId, exchange, symbol, volRatio, marketType, fundingRate) {
+  async sendVolumeAlert(chatId, exchange, symbol, volRatio, marketType, fundingObj) {
     let message = `📊 *VOLUME ALERT [${config.ALERT_VOLUME_TF}m]*\n\n` +
       `Market: ${escapeMd(exchange.toUpperCase())} [${marketType}]\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
       `Volume: ${volRatio.toFixed(2)}x average`;
-    if (marketType === 'Perpetual' && fundingRate !== undefined && fundingRate !== null) {
-      message += `\nFunding: ${(fundingRate * 100).toFixed(4)}%`;
+    if (marketType === 'Perpetual' && fundingObj && fundingObj.rate !== null && fundingObj.rate !== undefined) {
+      message += `\nFunding: ${formatFundingObj(fundingObj)}`;
     }
 
     if (this.tgBot) {
@@ -478,13 +514,13 @@ class CryptoTracker {
   }
 
   // Send ATR alert
-  async sendATRAlert(chatId, exchange, symbol, atrData, marketType, fundingRate) {
+  async sendATRAlert(chatId, exchange, symbol, atrData, marketType, fundingObj) {
     let message = `📈 *ATR ALERT [${config.ALERT_ATR_TF}m]*\n\n` +
       `Market: ${escapeMd(exchange.toUpperCase())} [${marketType}]\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
       `ATR: ${atrData.map(a => `${a.atr.toFixed(2)}%`).join(', ')}`;
-    if (marketType === 'Perpetual' && fundingRate !== undefined && fundingRate !== null) {
-      message += `\nFunding: ${(fundingRate * 100).toFixed(4)}%`;
+    if (marketType === 'Perpetual' && fundingObj && fundingObj.rate !== null && fundingObj.rate !== undefined) {
+      message += `\nFunding: ${formatFundingObj(fundingObj)}`;
     }
 
     if (this.tgBot) {
@@ -496,7 +532,7 @@ class CryptoTracker {
   }
 
   // Send Price alert
-  async sendPriceAlert(chatId, exchange, symbol, priceChange, price, marketType, fundingRate) {
+  async sendPriceAlert(chatId, exchange, symbol, priceChange, price, marketType, fundingObj) {
     const arrow = priceChange >= 0 ? '🟢' : '🔴';
     const sign = priceChange >= 0 ? '+' : '';
     let message = `💰 *PRICE ALERT [${config.ALERT_PRICE_TF}m]* ${arrow}\n\n` +
@@ -504,8 +540,8 @@ class CryptoTracker {
       `Symbol: ${escapeMd(symbol)}\n` +
       `Price: $${price}\n` +
       `Change: ${sign}${priceChange.toFixed(2)}%`;
-    if (marketType === 'Perpetual' && fundingRate !== undefined && fundingRate !== null) {
-      message += `\nFunding: ${(fundingRate * 100).toFixed(4)}%`;
+    if (marketType === 'Perpetual' && fundingObj && fundingObj.rate !== null && fundingObj.rate !== undefined) {
+      message += `\nFunding: ${formatFundingObj(fundingObj)}`;
     }
 
     if (this.tgBot) {
@@ -517,14 +553,14 @@ class CryptoTracker {
   }
 
   // Send Funding Rate Alert with multi-exchange context
-  async sendFundingRateAlert(chatId, exchange, symbol, targetFundingRate, otherRates) {
+  async sendFundingRateAlert(chatId, exchange, symbol, targetFundingObj, otherRates) {
     let message = `🏦 *FUNDING RATE ALERT*\n\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
-      `*${escapeMd(exchange.toUpperCase())} [Perpetual]*: ${(targetFundingRate * 100).toFixed(4)}%`;
+      `*${escapeMd(exchange.toUpperCase())} [Perpetual]*: ${formatFundingObj(targetFundingObj)}`;
 
     if (otherRates && otherRates.length > 0) {
       message += `\n\nOther Exchanges:\n` + otherRates.map(r => 
-        ` - ${escapeMd(r.exchange.toUpperCase())} [Perpetual]: ${(r.rate * 100).toFixed(4)}%`
+        ` - ${escapeMd(r.exchange.toUpperCase())} [Perpetual]: ${formatFundingObj(r.obj)}`
       ).join('\n');
     }
 
@@ -533,7 +569,7 @@ class CryptoTracker {
         parse_mode: 'Markdown'
       });
     }
-    console.log(`🏦 FUNDING ALERT: ${symbol} on ${exchange} (${(targetFundingRate * 100).toFixed(4)}%)`);
+    console.log(`🏦 FUNDING ALERT: ${symbol} on ${exchange} (${formatFundingObj(targetFundingObj)})`);
   }
 
   // Scan one exchange
@@ -590,8 +626,10 @@ class CryptoTracker {
         } catch (e) { /* skip */ }
 
         let fundingRateVal = null;
+        let fundingObj = { rate: null };
         if (marketType === 'Perpetual' && ticker.fundingRate !== undefined) {
            fundingRateVal = ticker.fundingRate;
+           fundingObj = { rate: ticker.fundingRate, nextFundingTime: ticker.nextFundingTime, intervalHours: ticker.intervalHours };
         }
 
         const activeUsers = DB.getActiveUsers();
@@ -599,12 +637,23 @@ class CryptoTracker {
         for (const user of activeUsers) {
           if (!user.enabledExchanges.includes(exchangeKey)) continue;
 
+          // Helper to get explicit funding object
+          const getExplicitObj = async () => {
+            if (typeof api.getTickerInfo === 'function') {
+              const info = await api.getTickerInfo(symbol);
+              if (typeof info === 'object' && info !== null) return info;
+              return { rate: info };
+            }
+            return fundingObj;
+          };
+
           // 1. Funding Rate Alert
           if (fundingRateVal !== null && Math.abs(fundingRateVal * 100) >= user.fundingThreshold) {
             const fundKey = `${user.chatId}:fund:${exchangeKey}:${symbol}`;
             if (!this.alertedSymbols.has(fundKey)) {
-              const explicitFunding = typeof api.getTickerInfo === 'function' ? await api.getTickerInfo(symbol) : fundingRateVal;
-              if (explicitFunding !== null && Math.abs(explicitFunding * 100) >= user.fundingThreshold) {
+              const explicitCallObj = await getExplicitObj();
+              const explicitRate = explicitCallObj.rate;
+              if (explicitRate !== null && Math.abs(explicitRate * 100) >= user.fundingThreshold) {
                 const otherFundingRates = [];
                 for (const otherKey of config.EXCHANGES) {
                   if (otherKey === exchangeKey) continue;
@@ -613,12 +662,13 @@ class CryptoTracker {
                     try {
                       const otherFr = await otherEx.api.getTickerInfo(symbol);
                       if (otherFr !== null) {
-                        otherFundingRates.push({ exchange: otherEx.name, rate: otherFr });
+                        const otherObj = typeof otherFr === 'object' ? otherFr : { rate: otherFr };
+                        otherFundingRates.push({ exchange: otherEx.name, obj: otherObj });
                       }
                     } catch (e) { /* skip */ }
                   }
                 }
-                await this.sendFundingRateAlert(user.chatId, exchangeKey, symbol, explicitFunding, otherFundingRates);
+                await this.sendFundingRateAlert(user.chatId, exchangeKey, symbol, explicitCallObj, otherFundingRates);
                 this.alertedSymbols.add(fundKey);
                 setTimeout(() => this.alertedSymbols.delete(fundKey), 1800000); // 30 min cooldown
               }
@@ -629,8 +679,8 @@ class CryptoTracker {
           if (volRatio >= user.volumeThreshold) {
             const volKey = `${user.chatId}:vol:${exchangeKey}:${symbol}`;
             if (!this.alertedSymbols.has(volKey)) {
-              const explicitFunding = typeof api.getTickerInfo === 'function' ? await api.getTickerInfo(symbol) : fundingRateVal;
-              await this.sendVolumeAlert(user.chatId, exchangeKey, symbol, volRatio, marketType, explicitFunding);
+              const explicitCallObj = await getExplicitObj();
+              await this.sendVolumeAlert(user.chatId, exchangeKey, symbol, volRatio, marketType, explicitCallObj);
               this.alertedSymbols.add(volKey);
               setTimeout(() => this.alertedSymbols.delete(volKey), 1800000);
             }
@@ -642,8 +692,8 @@ class CryptoTracker {
             if (filteredAtrData.length > 0) {
               const atrKey = `${user.chatId}:atr:${exchangeKey}:${symbol}`;
               if (!this.alertedSymbols.has(atrKey)) {
-                const explicitFunding = typeof api.getTickerInfo === 'function' ? await api.getTickerInfo(symbol) : fundingRateVal;
-                await this.sendATRAlert(user.chatId, exchangeKey, symbol, filteredAtrData, marketType, explicitFunding);
+                const explicitCallObj = await getExplicitObj();
+                await this.sendATRAlert(user.chatId, exchangeKey, symbol, filteredAtrData, marketType, explicitCallObj);
                 this.alertedSymbols.add(atrKey);
                 setTimeout(() => this.alertedSymbols.delete(atrKey), 1800000);
               }
@@ -654,8 +704,8 @@ class CryptoTracker {
           if (priceChange !== null && Math.abs(priceChange) >= user.priceThreshold) {
             const priceKey = `${user.chatId}:price:${exchangeKey}:${symbol}`;
             if (!this.alertedSymbols.has(priceKey)) {
-              const explicitFunding = typeof api.getTickerInfo === 'function' ? await api.getTickerInfo(symbol) : fundingRateVal;
-              await this.sendPriceAlert(user.chatId, exchangeKey, symbol, priceChange, currentPrice, marketType, explicitFunding);
+              const explicitCallObj = await getExplicitObj();
+              await this.sendPriceAlert(user.chatId, exchangeKey, symbol, priceChange, currentPrice, marketType, explicitCallObj);
               this.alertedSymbols.add(priceKey);
               setTimeout(() => this.alertedSymbols.delete(priceKey), 1800000);
             }
@@ -718,7 +768,8 @@ if (tracker.tgBot) {
        [{ text: `📈 ATR Threshold: ${user.atrThreshold}%`, callback_data: 'edit_atr' }],
        [{ text: `💰 Price Threshold: ${user.priceThreshold}%`, callback_data: 'edit_price' }],
        [{ text: `🏦 Funding Threshold: ${user.fundingThreshold}%`, callback_data: 'edit_fund' }],
-       [{ text: `🔄 Toggle Exchanges >>`, callback_data: 'menu_exchanges' }]
+       [{ text: `🔄 Toggle Exchanges >>`, callback_data: 'menu_exchanges' }],
+       [{ text: `⚠️ Reset to Default`, callback_data: 'reset_defaults' }]
      ];
   };
 
@@ -797,6 +848,15 @@ if (tracker.tgBot) {
     }
     const user = DB.getUser(ctx.chat.id);
     ctx.editMessageReplyMarkup({ inline_keyboard: getExchangesKeyboard(user) });
+  });
+
+  tracker.tgBot.action('reset_defaults', (ctx) => {
+    const user = DB.resetUser(ctx.chat.id);
+    ctx.answerCbQuery('✅ Settings restored to default!');
+    ctx.editMessageText('⚙️ *Your Alert Settings*\nClick a button below to configure:', {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: getSettingsKeyboard(user) }
+    });
   });
 
   // Simple state for waiting for user input

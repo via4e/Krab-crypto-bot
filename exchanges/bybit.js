@@ -47,7 +47,9 @@ class BybitAPI {
         acc[t.symbol] = {
           volume24h: parseFloat(t.volume24h) * parseFloat(t.lastPrice),
           lastPrice: parseFloat(t.lastPrice),
-          fundingRate: parseFloat(t.fundingRate) || 0
+          fundingRate: parseFloat(t.fundingRate) || 0,
+          nextFundingTime: parseInt(t.nextFundingTime) || null,
+          intervalHours: parseInt(t.fundingIntervalHour) || null
         };
       }
       return acc;
@@ -61,7 +63,12 @@ class BybitAPI {
         params: { category: 'linear', symbol }
       });
       if (res.data && res.data.result && res.data.result.list && res.data.result.list.length > 0) {
-        return parseFloat(res.data.result.list[0].fundingRate) || 0;
+        const t = res.data.result.list[0];
+        return {
+          rate: parseFloat(t.fundingRate) || 0,
+          nextFundingTime: parseInt(t.nextFundingTime) || null,
+          intervalHours: parseInt(t.fundingIntervalHour) || null
+        };
       }
     } catch (err) {
       // Return null if symbol doesn't exist or API fails

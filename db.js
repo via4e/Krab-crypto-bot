@@ -65,6 +65,26 @@ class DB {
     return this.getUser(chatId);
   }
 
+  // Reset user thresholds to default config values
+  static resetUser(chatId) {
+    const stmt = db.prepare(`
+      UPDATE users 
+      SET volumeThreshold = ?, atrThreshold = ?, priceThreshold = ?, fundingThreshold = ?, enabledExchanges = ?
+      WHERE chatId = ?
+    `);
+    
+    stmt.run(
+      config.ALERT_VOLUME_THRESHOLD,
+      config.ALERT_ATR_THRESHOLD,
+      config.ALERT_PRICE_THRESHOLD,
+      config.ALERT_FUNDING_THRESHOLD,
+      JSON.stringify(config.EXCHANGES),
+      chatId.toString()
+    );
+
+    return this.getUser(chatId);
+  }
+
   // Update a user's specific threshold
   // @param field: 'volumeThreshold', 'atrThreshold', 'priceThreshold', or 'fundingThreshold'
   static updateThreshold(chatId, field, value) {
