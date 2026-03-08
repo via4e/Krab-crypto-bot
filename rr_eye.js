@@ -495,10 +495,9 @@ class CryptoTracker {
     return !exchangeKey.endsWith('_spot') ? 'Perpetual' : 'Spot';
   }
 
-  // Send Volume alert
   async sendVolumeAlert(chatId, exchange, symbol, volRatio, marketType, fundingObj) {
     let message = `📊 *VOLUME ALERT [${config.ALERT_VOLUME_TF}m]*\n\n` +
-      `Market: ${escapeMd(exchange.toUpperCase())} [${marketType}]\n` +
+      `Market: ${escapeMd(exchange.replace('_spot', '').toUpperCase())} [${marketType}]\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
       `Volume: ${volRatio.toFixed(2)}x average`;
     if (marketType === 'Perpetual' && fundingObj && fundingObj.rate !== null && fundingObj.rate !== undefined) {
@@ -513,10 +512,9 @@ class CryptoTracker {
     console.log(`📊 VOLUME ALERT: ${symbol} on ${exchange} [${marketType}] (${volRatio.toFixed(2)}x)`);
   }
 
-  // Send ATR alert
   async sendATRAlert(chatId, exchange, symbol, atrData, marketType, fundingObj) {
     let message = `📈 *ATR ALERT [${config.ALERT_ATR_TF}m]*\n\n` +
-      `Market: ${escapeMd(exchange.toUpperCase())} [${marketType}]\n` +
+      `Market: ${escapeMd(exchange.replace('_spot', '').toUpperCase())} [${marketType}]\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
       `ATR: ${atrData.map(a => `${a.atr.toFixed(2)}%`).join(', ')}`;
     if (marketType === 'Perpetual' && fundingObj && fundingObj.rate !== null && fundingObj.rate !== undefined) {
@@ -531,12 +529,11 @@ class CryptoTracker {
     console.log(`📈 ATR ALERT: ${symbol} on ${exchange} [${marketType}]`);
   }
 
-  // Send Price alert
   async sendPriceAlert(chatId, exchange, symbol, priceChange, price, marketType, fundingObj) {
     const arrow = priceChange >= 0 ? '🟢' : '🔴';
     const sign = priceChange >= 0 ? '+' : '';
     let message = `💰 *PRICE ALERT [${config.ALERT_PRICE_TF}m]* ${arrow}\n\n` +
-      `Market: ${escapeMd(exchange.toUpperCase())} [${marketType}]\n` +
+      `Market: ${escapeMd(exchange.replace('_spot', '').toUpperCase())} [${marketType}]\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
       `Price: $${price}\n` +
       `Change: ${sign}${priceChange.toFixed(2)}%`;
@@ -552,15 +549,14 @@ class CryptoTracker {
     console.log(`💰 PRICE ALERT: ${symbol} on ${exchange} [${marketType}] (${sign}${priceChange.toFixed(2)}%)`);
   }
 
-  // Send Funding Rate Alert with multi-exchange context
   async sendFundingRateAlert(chatId, exchange, symbol, targetFundingObj, otherRates) {
     let message = `🏦 *FUNDING RATE ALERT*\n\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
-      `*${escapeMd(exchange.toUpperCase())} [Perpetual]*: ${formatFundingObj(targetFundingObj)}`;
+      `*${escapeMd(exchange.replace('_spot', '').toUpperCase())} [Perpetual]*: ${formatFundingObj(targetFundingObj)}`;
 
     if (otherRates && otherRates.length > 0) {
       message += `\n\nOther Exchanges:\n` + otherRates.map(r => 
-        ` - ${escapeMd(r.exchange.toUpperCase())} [Perpetual]: ${formatFundingObj(r.obj)}`
+        ` - ${escapeMd(r.exchange.replace(' Spot', '').toUpperCase())} [Perpetual]: ${formatFundingObj(r.obj)}`
       ).join('\n');
     }
 
