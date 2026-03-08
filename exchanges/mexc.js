@@ -5,7 +5,7 @@ class MEXCAPI {
     this.baseURL = 'https://api.mexc.com/api/v3';
   }
 
-  // Get all USDT symbols
+  // Get all USDT spot symbols
   async getSymbols() {
     const res = await axios.get(`${this.baseURL}/exchangeInfo`);
     return res.data.symbols

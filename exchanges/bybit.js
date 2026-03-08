@@ -5,7 +5,7 @@ class BybitAPI {
     this.baseURL = 'https://api.bybit.com/v5';
   }
 
-  // Get all USDT perpetual symbols
+  // Get all USDT perpetual (linear) symbols
   async getSymbols() {
     const res = await axios.get(`${this.baseURL}/market/instruments-info`, {
       params: { category: 'linear', limit: 1000 }
@@ -15,10 +15,17 @@ class BybitAPI {
       .map(s => s.symbol);
   }
 
+  // Map standard intervals to Bybit format
+  static INTERVAL_MAP = {
+    '1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30',
+    '1h': '60', '2h': '120', '4h': '240', '1d': 'D', '1w': 'W'
+  };
+
   // Get klines (candles) for a symbol
   async getKlines(symbol, interval, limit = 200) {
+    const bybitInterval = BybitAPI.INTERVAL_MAP[interval] || interval;
     const res = await axios.get(`${this.baseURL}/market/kline`, {
-      params: { category: 'linear', symbol, interval, limit }
+      params: { category: 'linear', symbol, interval: bybitInterval, limit }
     });
     return res.data.result.list.map(k => ({
       time: parseInt(k[0]),
