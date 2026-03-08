@@ -104,6 +104,16 @@ class DB {
     const stmt = db.prepare('UPDATE users SET isActive = 1 WHERE chatId = ?');
     stmt.run(chatId.toString());
   }
+
+  // Get user statistics for admin features
+  static getStats() {
+    const totalStmt = db.prepare('SELECT COUNT(*) as count FROM users');
+    const activeStmt = db.prepare('SELECT COUNT(*) as count FROM users WHERE isActive = 1');
+    return {
+      totalUsers: totalStmt.get().count,
+      activeUsers: activeStmt.get().count
+    };
+  }
 }
 
 module.exports = DB;

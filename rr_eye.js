@@ -462,7 +462,7 @@ class CryptoTracker {
   // Send Volume alert
   async sendVolumeAlert(chatId, exchange, symbol, volRatio, marketType, fundingRate) {
     let message = `📊 *VOLUME ALERT [${config.ALERT_VOLUME_TF}m]*\n\n` +
-      `Market: ${escapeMd(exchange.toUpperCase())} \\[${marketType}]\n` +
+      `Market: ${escapeMd(exchange.toUpperCase())} [${marketType}]\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
       `Volume: ${volRatio.toFixed(2)}x average`;
     if (marketType === 'Perpetual' && fundingRate !== undefined && fundingRate !== null) {
@@ -480,7 +480,7 @@ class CryptoTracker {
   // Send ATR alert
   async sendATRAlert(chatId, exchange, symbol, atrData, marketType, fundingRate) {
     let message = `📈 *ATR ALERT [${config.ALERT_ATR_TF}m]*\n\n` +
-      `Market: ${escapeMd(exchange.toUpperCase())} \\[${marketType}]\n` +
+      `Market: ${escapeMd(exchange.toUpperCase())} [${marketType}]\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
       `ATR: ${atrData.map(a => `${a.atr.toFixed(2)}%`).join(', ')}`;
     if (marketType === 'Perpetual' && fundingRate !== undefined && fundingRate !== null) {
@@ -500,7 +500,7 @@ class CryptoTracker {
     const arrow = priceChange >= 0 ? '🟢' : '🔴';
     const sign = priceChange >= 0 ? '+' : '';
     let message = `💰 *PRICE ALERT [${config.ALERT_PRICE_TF}m]* ${arrow}\n\n` +
-      `Market: ${escapeMd(exchange.toUpperCase())} \\[${marketType}]\n` +
+      `Market: ${escapeMd(exchange.toUpperCase())} [${marketType}]\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
       `Price: $${price}\n` +
       `Change: ${sign}${priceChange.toFixed(2)}%`;
@@ -520,11 +520,11 @@ class CryptoTracker {
   async sendFundingRateAlert(chatId, exchange, symbol, targetFundingRate, otherRates) {
     let message = `🏦 *FUNDING RATE ALERT*\n\n` +
       `Symbol: ${escapeMd(symbol)}\n` +
-      `*${escapeMd(exchange.toUpperCase())} \\[Perpetual]*: ${(targetFundingRate * 100).toFixed(4)}%`;
+      `*${escapeMd(exchange.toUpperCase())} [Perpetual]*: ${(targetFundingRate * 100).toFixed(4)}%`;
 
     if (otherRates && otherRates.length > 0) {
       message += `\n\nOther Exchanges:\n` + otherRates.map(r => 
-        ` - ${escapeMd(r.exchange.toUpperCase())} \\[Perpetual]: ${(r.rate * 100).toFixed(4)}%`
+        ` - ${escapeMd(r.exchange.toUpperCase())} [Perpetual]: ${(r.rate * 100).toFixed(4)}%`
       ).join('\n');
     }
 
@@ -751,6 +751,25 @@ if (tracker.tgBot) {
     });
   });
 
+  tracker.tgBot.command('users', (ctx) => {
+    if (!config.ADMIN_UIDS.includes(ctx.chat.id.toString())) {
+      return ctx.reply('❌ Permission denied. You must be an administrator to use this command.');
+    }
+
+    try {
+      const stats = DB.getStats();
+      ctx.reply(
+        `👥 *User Statistics*\n\n` +
+        `*Total Registered:* ${stats.totalUsers}\n` +
+        `*Active Alerts:* ${stats.activeUsers}`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (err) {
+      console.error('❌ Error in /users command:', err.message);
+      ctx.reply('❌ Error fetching user statistics.');
+    }
+  });
+
   // Action Handlers
   tracker.tgBot.action('menu_main', (ctx) => {
     const user = DB.getUser(ctx.chat.id);
@@ -826,6 +845,7 @@ if (tracker.tgBot) {
     { command: 'volume', description: 'Top tokens by volume change (last 1h)' },
     { command: 'price', description: 'Top tokens by price change (last 6h)' },
     { command: 'funding', description: 'Top perpetual tokens by absolute funding rate' },
+    { command: 'users', description: 'Show user statistics (admin only)' },
   ]).catch(err => console.error('❌ Failed to set bot commands:', err.message));
 
   // Catch Telegraf runtime errors (like polling timeouts)
